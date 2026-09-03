@@ -1,0 +1,182 @@
+<div class="app-container">
+  <!-- Header & Mode Selector -->
+  <header class="app-header">
+    <div class="title-container">
+      <h1>🎮 Tic Tac Toe</h1>
+    </div>
+
+    <div class="mode-selector">
+      <button 
+        class="mode-btn" 
+        [class.active]="selectedMode() === 'TwoPlayer'"
+        (click)="switchMode('TwoPlayer')">
+        👥 Two Player Mode
+      </button>
+      <button 
+        class="mode-btn" 
+        [class.active]="selectedMode() === 'AgainstComputer'"
+        (click)="switchMode('AgainstComputer')">
+        🤖 Play Against Computer
+      </button>
+      <button 
+        class="mode-btn settings-toggle"
+        [class.active]="showSettings()"
+        (click)="showSettings.set(!showSettings())"
+        title="Configure Backend API URL">
+        ⚙️ Settings
+      </button>
+    </div>
+  </header>
+
+  <!-- API URL Configuration Bar -->
+  @if (showSettings() || errorMessage()) {
+    <div class="settings-bar">
+      <span class="settings-label">Backend API URL:</span>
+      <input 
+        type="text" 
+        class="api-input" 
+        [(ngModel)]="apiUrl" 
+        placeholder="http://localhost:62415" />
+      <button class="btn btn-sm btn-primary" (click)="applyCustomApiUrl()">
+        Connect
+      </button>
+    </div>
+  }
+
+  <!-- Error / Info Banner -->
+  @if (errorMessage()) {
+    <div class="error-banner">
+      <div class="error-text">
+        <span>⚠️ {{ errorMessage() }}</span>
+      </div>
+      <button class="btn btn-sm btn-action" (click)="startNewGame()">Retry Connection</button>
+    </div>
+  }
+
+  <!-- Main Content Layout -->
+  <main class="main-layout">
+    <!-- Left Column: Game Board & Controls -->
+    <section class="game-section">
+      <!-- Status & Turn Banner -->
+      <div class="status-card" [class.won]="gameState().gameStatus === 'Won'" [class.draw]="gameState().gameStatus === 'Draw'">
+        @if (gameState().gameStatus === 'InProgress') {
+          <div class="turn-indicator">
+            <span class="turn-label">Current Turn:</span>
+            <span class="player-badge" [class.player-x]="gameState().currentPlayer === 'X'" [class.player-o]="gameState().currentPlayer === 'O'">
+              Player {{ gameState().currentPlayer }}
+              @if (gameState().gameMode === 'AgainstComputer' && gameState().currentPlayer === 'O') {
+                (Computer)
+              }
+            </span>
+          </div>
+        } @else if (gameState().gameStatus === 'Won') {
+          <div class="result-indicator win-result">
+            🏆 <strong>Player {{ gameState().winner }} Wins!</strong>
+          </div>
+        } @else if (gameState().gameStatus === 'Draw') {
+          <div class="result-indicator draw-result">
+            🤝 <strong>Game Ended in a Draw!</strong>
+          </div>
+        }
+      </div>
+
+      <!-- 3x3 Tic Tac Toe Grid -->
+      <div class="board-container">
+        <div class="board-grid">
+          @for (cellIdx of [0, 1, 2, 3, 4, 5, 6, 7, 8]; track cellIdx) {
+            <button 
+              class="cell"
+              [class.winning-cell]="isWinningCell(getBoardRow(cellIdx), getBoardCol(cellIdx))"
+              [class.cell-x]="gameState().board[getBoardRow(cellIdx)][getBoardCol(cellIdx)] === 'X'"
+              [class.cell-o]="gameState().board[getBoardRow(cellIdx)][getBoardCol(cellIdx)] === 'O'"
+              [class.cell-locked]="gameState().board[getBoardRow(cellIdx)][getBoardCol(cellIdx)] !== '' || isGameFinished()"
+              [disabled]="gameState().board[getBoardRow(cellIdx)][getBoardCol(cellIdx)] !== '' || isGameFinished() || loading()"
+              (click)="onCellClick(getBoardRow(cellIdx), getBoardCol(cellIdx))"
+              [attr.aria-label]="'Row ' + (getBoardRow(cellIdx) + 1) + ' Column ' + (getBoardCol(cellIdx) + 1) + ', ' + (gameState().board[getBoardRow(cellIdx)][getBoardCol(cellIdx)] || 'empty')">
+              <span class="cell-symbol">{{ gameState().board[getBoardRow(cellIdx)][getBoardCol(cellIdx)] }}</span>
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Game Action Controls -->
+      <div class="controls-panel">
+        <button 
+          class="btn btn-action btn-undo" 
+          [disabled]="!canUndo() || loading()"
+          (click)="onUndo()">
+          ↩️ Undo Last Move
+        </button>
+        <button 
+          class="btn btn-action btn-reset" 
+          [disabled]="loading()"
+          (click)="onResetGame()">
+          🔄 Reset Game
+        </button>
+      </div>
+    </section>
+
+    <!-- Right Column: Scoreboard & Move History -->
+    <aside class="sidebar-section">
+      <!-- Scoreboard Card -->
+      <div class="card scoreboard-card">
+        <div class="card-header">
+          <h3>📊 Scoreboard</h3>
+          <button class="btn btn-sm btn-outline-reset" (click)="onResetScoreboard()" [disabled]="loading()">
+            Reset Scoreboard
+          </button>
+        </div>
+        <div class="scores-grid">
+          <div class="score-box x-box">
+            <span class="score-label">Player X</span>
+            <span class="score-value">{{ gameState().scoreboard.xWins }}</span>
+          </div>
+          <div class="score-box draw-box">
+            <span class="score-label">Draws</span>
+            <span class="score-value">{{ gameState().scoreboard.draws }}</span>
+          </div>
+          <div class="score-box o-box">
+            <span class="score-label">Player O</span>
+            <span class="score-value">{{ gameState().scoreboard.oWins }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Move History Card -->
+      <div class="card history-card">
+        <div class="card-header">
+          <h3>📜 Move History</h3>
+          <span class="move-count">{{ gameState().moveHistory.length }} moves</span>
+        </div>
+        <div class="history-table-wrapper">
+          @if (gameState().moveHistory.length === 0) {
+            <p class="empty-history">No moves recorded yet. Make a move to start!</p>
+          } @else {
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Position</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (move of gameState().moveHistory; track move.moveNumber) {
+                  <tr>
+                    <td class="move-num">{{ move.moveNumber }}</td>
+                    <td>
+                      <span class="player-chip" [class.chip-x]="move.player === 'X'" [class.chip-o]="move.player === 'O'">
+                        {{ move.player }}
+                      </span>
+                    </td>
+                    <td class="move-pos">Row {{ move.position.row + 1 }}, Column {{ move.position.column + 1 }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
